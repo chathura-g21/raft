@@ -19,16 +19,24 @@ class WatRaftServer {
     int wait();
     // Set the RPC server once it is created in a child thread.
     void set_rpc_server(apache::thrift::server::TThreadedServer* server);
-    int get_id() { return node_id; } 
+    int get_id() { return node_id; }
+    void set_election_state();
+    int get_election_timeout();
+    const int std_election_timeout = 2000;
+
   
   private:
-    int node_id;     
+    int node_id;
+    bool contacted_leader;
     apache::thrift::server::TThreadedServer* rpc_server;
     const WatRaftConfig* config;
-    pthread_t rpc_thread;
+        pthread_t rpc_thread, timeout_thread;
     WatRaftState wat_state;   // Tracks the current state of the node.
+    
     static const int num_rpc_threads = 64;
     static void* start_rpc_server(void* param);
+    static void* election_timer(void* param);
+    
 };
 } // namespace WatRaft
 

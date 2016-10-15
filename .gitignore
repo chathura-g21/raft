@@ -2,3 +2,5 @@
 .DS_Store
 server
 gen-cpp
+.idea
+CMakeLists.txt

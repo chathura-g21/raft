@@ -12,6 +12,9 @@
 #include <thrift/concurrency/ThreadManager.h>
 #include <thrift/concurrency/PosixThreadFactory.h>
 #include <thrift/server/TThreadedServer.h>
+#include <future>
+#include <chrono>
+#include <time.h>
 
 using namespace ::apache::thrift;
 using namespace ::apache::thrift::protocol;
@@ -29,6 +32,7 @@ WatRaftServer::WatRaftServer(int node_id, const WatRaftConfig* config)
     if (rc != 0) {
         throw rc; // Just throw the error code
     }
+            srand (time(NULL));
 }
 
 WatRaftServer::~WatRaftServer() {
@@ -39,32 +43,47 @@ WatRaftServer::~WatRaftServer() {
 int WatRaftServer::wait() {
     wat_state.wait_ge(WatRaftState::SERVER_CREATED);
     // Perhaps perform your periodic tasks in this thread.
-    ServerMap::const_iterator it = config->get_servers()->begin();
-    for (; it != config->get_servers()->end(); it++) {
-        if (it->first == node_id) {
-            continue; // Skip itself
-        }
-        sleep(5); // Sleep
-        // The following is an example of sending an echo message.
-        boost::shared_ptr<TSocket> socket(
-            new TSocket((it->second).ip, (it->second).port));
-        boost::shared_ptr<TTransport> transport(new TBufferedTransport(socket));
-        boost::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
-        WatRaftClient client(protocol);
-        try {
-            transport->open();
-            std::string remote_str;
-            client.debug_echo(remote_str, "Hello");
-            transport->close();
-            // Create a WatID object from the return value.
-            std::cout << "Received: " << remote_str 
-                      << " from " << (it->second).ip 
-                      << ":" << (it->second).port << std::endl;
-        } catch (TTransportException e) {
-            printf("Caught exception: %s\n", e.what());
-        }
-
+    
+    contacted_leader =  false;
+    int election_timeout = pthread_create(&timeout_thread, NULL, election_timer, this);
+    if (election_timeout != 0) {
+        throw election_timeout; // Just throw the error code
     }
+    while (true) {
+        wat_state.wait_ge(WatRaftState::START_ELECTION);
+        printf("iterating main\n");
+        ServerMap::const_iterator it = config->get_servers()->begin();
+
+        for (; it != config->get_servers()->end(); it++) {
+            if (it->first == node_id) {
+                continue; // Skip itself
+            }
+            
+//            sleep(5); // Sleep
+            // The following is an example of sending an echo message.
+            boost::shared_ptr<TSocket> socket(
+                                              new TSocket((it->second).ip, (it->second).port));
+            boost::shared_ptr<TTransport> transport(new TBufferedTransport(socket));
+            boost::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
+            WatRaftClient client(protocol);
+            try {
+                                transport->open();
+                std::string remote_str;
+                client.debug_echo(remote_str, "Hello");
+                transport->close();
+                // Create a WatID object from the return value.
+                std::cout << "Received: " << remote_str
+                << " from " << (it->second).ip
+                << ":" << (it->second).port << std::endl;
+            } catch (TTransportException e) {
+                printf("Caught exception: %s\n", e.what());
+            }
+            
+        }
+        wat_state.change_state(WatRaftState::SERVER_CREATED);
+    
+    }
+    
     pthread_join(rpc_thread, NULL);
     return 0;
 }
@@ -96,6 +115,28 @@ void* WatRaftServer::start_rpc_server(void* param) {
         processor, serverTransport, transportFactory, protocolFactory);
     raft->set_rpc_server(server);
     server->serve();
+    return NULL;
+}
+
+int WatRaftServer::get_election_timeout() {
+    return rand()%std_election_timeout + std_election_timeout;
+}
+    
+void WatRaftServer::set_election_state() {
+    wat_state.change_state(WatRaftState::START_ELECTION);
+    printf("Set election state\n");
+}
+    
+void* WatRaftServer::election_timer(void* param) {
+    WatRaftServer* raft = static_cast<WatRaftServer*>(param);
+    while(true) {
+        int timeout = raft->get_election_timeout();
+        printf("restarting election timer %d\n", timeout);
+        std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
+        if(!raft->contacted_leader) {
+            raft->set_election_state();
+        }
+    }
     return NULL;
 }
 } // namespace WatRaft
