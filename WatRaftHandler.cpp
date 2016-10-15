@@ -30,7 +30,17 @@ void WatRaftHandler::append_entries(AEResult& _return,
                                     const std::vector<Entry> & entries,
                                     const int32_t leader_commit_index) {
     // Your implementation goes here
-    printf("append_entries\n");
+    printf("append_entries: term: %d | leaderid: %d\n",term, leader_id);
+    _return.term = server->current_term;
+    server->contacted_leader = true;
+    if(term < server->current_term) {
+        _return.success = false;
+    } else if(prev_log_index < server->prev_log_index) {
+        _return.success = false;
+    } else {
+        server->set_as_follower();
+        _return.success = true;
+    }
 }
 
 void WatRaftHandler::request_vote(RVResult& _return,
@@ -42,11 +52,10 @@ void WatRaftHandler::request_vote(RVResult& _return,
     printf("request_vote: term: %d | candidateid: %d\n",term, candidate_id);
     
     server->contacted_leader = true;
-    if(!server->voted_this_term && term >= server->current_term && last_log_term >= server->last_log_term && last_log_index >= server->last_log_index) {
+    if(!server->voted_this_term && term >= server->current_term && last_log_term >= server->prev_log_term && last_log_index >= server->prev_log_index) {
         _return.vote_granted = true;
         _return.term = term;
         server->voted_this_term = true;
-        leader_id = candidate_id;
         server->current_term = term;
         server->set_as_follower();
         printf("granted_vote: term: %d | candidateid: %d\n",term, candidate_id);
