@@ -8,7 +8,7 @@ namespace WatRaft {
 class WatRaftState {
  public:
   // Add more states as needed.
-  enum State {INIT, SERVER_CREATED, START_ELECTION};
+  enum State {INIT, SERVER_CREATED, FOLLOWER, CANDIDATE, LEADER};
 
   WatRaftState();
   ~WatRaftState();

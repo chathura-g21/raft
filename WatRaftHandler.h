@@ -32,6 +32,7 @@ class WatRaftHandler : virtual public WatRaftIf {
     void debug_echo(std::string& _return, const std::string& msg);
   private:
     WatRaftServer* server;
+    int leader_id;
 };
 } // namespace WatRaft
 
