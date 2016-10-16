@@ -180,9 +180,19 @@ namespace WatRaft {
         return config->get_servers();
     }
     
-    void WatRaftServer::update_state_machine(const std::string& key, const std::string& value) {
-        state_machine[key] = value;
-        std::cout << "Current State Machine key:" << key << " value: " << state_machine[key] <<"\n";
+    void WatRaftServer::update_state_machine() {
+        
+        std::vector<Entry>::iterator it= commit_log.begin()+last_applied_index;
+        for(;it < commit_log.begin()+current_committed_index; it++) {
+            state_machine[it->key] = it->val;
+        }
+        
+        last_applied_index = current_committed_index;
+        std::cout << "Current State Machine {";
+        for(std::map<std::string,std::string>::iterator i = state_machine.begin(); i != state_machine.end(); ++i) {
+            std::cout << i->first << ": " << i->second << ", ";
+        }
+        std::cout << "\n";
     }
     
     int WatRaftServer::get_last_log_term() {

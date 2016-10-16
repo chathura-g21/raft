@@ -50,7 +50,7 @@ void WatRaftHandler::put(const std::string& key, const std::string& val) {
     }
     if(votes >= server->get_quorum()) {
         server->current_committed_index = server->commit_log.size();
-        server->update_state_machine(key, val);
+        server->update_state_machine();
     }
 }
 
@@ -74,6 +74,8 @@ void WatRaftHandler::append_entries(AEResult& _return,
         server->set_as_follower();
         server->current_leader_id = leader_id;
         server->add_log_entries(entries, prev_log_index);
+        server->current_committed_index = leader_commit_index;
+        server->update_state_machine();
         _return.success = true;
     }
 }

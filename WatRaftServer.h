@@ -27,6 +27,7 @@ class WatRaftServer {
     int current_term = 0;
     int current_committed_index =0;
     int current_leader_id = 0;
+    int last_applied_index = 0;
     int get_quorum();
     void elect_as_leader();
     int node_id;
@@ -44,7 +45,7 @@ class WatRaftServer {
     void client_put(int node_id,const std::string& key,const std::string& value);
     void add_log_entry(Entry entry);
     void add_log_entries(std::vector<Entry> entries, int last_index);
-    void update_state_machine(const std::string& key, const std::string& value);
+    void update_state_machine();
     int get_last_log_term();
     int get_last_log_index();
     
