@@ -62,6 +62,11 @@ namespace WatRaft {
         if(do_heartbeat != 0) {
             throw do_heartbeat;
         }
+        
+        int client = pthread_create(&client_thread, NULL, do_client_request, this);
+        if(client != 0) {
+            throw client;
+        }
 
 //        while (true) {
 //            
@@ -82,9 +87,10 @@ namespace WatRaft {
         WatRaftClient client(protocol);
         RVResult remote_rv_result;
         transport->open();
-        client.request_vote(remote_rv_result, current_term, this->node_id, prev_log_index, prev_log_term);
+        
+        client.request_vote(remote_rv_result, current_term, this->node_id, get_last_log_index(), get_last_log_term());
         transport->close();
-        // Create a WatID object from the return value.
+        
         std::cout << "Received "<< remote_rv_result << "from "<< node.ip
         << ":" << node.port << std::endl;
         
@@ -100,14 +106,25 @@ namespace WatRaft {
         WatRaftClient client(protocol);
         AEResult remote_ae_result;
         transport->open();
-        client.append_entries(remote_ae_result, current_term, this->node_id, prev_log_index, prev_log_term, entries, current_index);
         
+        client.append_entries(remote_ae_result, current_term, this->node_id, get_last_log_index(), get_last_log_term(), entries, current_committed_index);
         transport->close();
-        // Create a WatID object from the return value.
+        
         std::cout << "Received "<< remote_ae_result << "from "<< node.ip
         << ":" << node.port << std::endl;
         
         return remote_ae_result;
+    }
+    
+    void WatRaftServer::client_put(int node_id,const std::string& key,const std::string& value) {
+        IPPortPair node = config->get_servers()->at(node_id);
+        boost::shared_ptr<TSocket> socket(
+                                          new TSocket(node.ip, node.port));
+        boost::shared_ptr<TTransport> transport(new TBufferedTransport(socket));
+        boost::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
+        WatRaftClient client(protocol);
+        transport->open();
+        client.put(key, value);
     }
     
     void WatRaftServer::elect_as_leader() {
@@ -147,8 +164,33 @@ namespace WatRaft {
         printf("Set candidate state\n");
     }
     
+    void WatRaftServer::add_log_entry(Entry entry) {
+        commit_log.push_back(entry);
+    }
+    
+    void WatRaftServer::add_log_entries(std::vector<Entry> entries, int last_index) {
+        if(last_index < commit_log.size()) {
+            //remeber logs are considered to be one based indices
+            commit_log.erase(commit_log.begin()+last_index, commit_log.end());
+        }
+        commit_log.insert(commit_log.end(), entries.begin(), entries.end());
+    }
+    
     const ServerMap* WatRaftServer::get_servers() {
         return config->get_servers();
+    }
+    
+    void WatRaftServer::update_state_machine(const std::string& key, const std::string& value) {
+        state_machine[key] = value;
+        std::cout << "Current State Machine key:" << key << " value: " << state_machine[key] <<"\n";
+    }
+    
+    int WatRaftServer::get_last_log_term() {
+        return !commit_log.empty()? commit_log.back().term: 0;
+    }
+    
+    int WatRaftServer::get_last_log_index() {
+        return commit_log.size();
     }
     
     void* WatRaftServer::do_election(void*param) {
@@ -194,9 +236,13 @@ namespace WatRaft {
     void* WatRaftServer::do_heartbeats(void* param) {
         WatRaftServer* raft = static_cast<WatRaftServer*>(param);
         while(true) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(raft->std_election_timeout/2));
             raft->wait_till_leader();
             printf("Iterating hearbeat thread as leader. term %d\n", raft->current_term);
-            //TODO: only initiate heartbeat if no requests have been processed in the past period
+            if(raft->processed_request) {
+                raft->processed_request = false;
+                continue;
+            }
             ServerMap::const_iterator it = raft->get_servers()->begin();
             for (; it != raft->get_servers()->end(); it++) {
                 if (it->first == raft->node_id) {
@@ -211,13 +257,13 @@ namespace WatRaft {
                     printf("Caught exception: %s\n", e.what());
                 }
             }
-            int timeout = raft->get_election_timeout();
-            std::this_thread::sleep_for(std::chrono::milliseconds(timeout/2));
         }
     }
     
     void* WatRaftServer::election_timer(void* param) {
         WatRaftServer* raft = static_cast<WatRaftServer*>(param);
+        
+
         while(true) {
             int timeout = raft->get_election_timeout();
             printf("restarting election timers %d\n", timeout);
@@ -238,6 +284,30 @@ namespace WatRaft {
     void WatRaftServer::set_rpc_server(TThreadedServer* server) {
         rpc_server = server;
         wat_state.change_state(WatRaftState::SERVER_CREATED);
+    }
+        
+    void* WatRaftServer::do_client_request(void* param) {
+        WatRaftServer* raft = static_cast<WatRaftServer*>(param);
+        int value = 0;
+        
+        //allow an initial grace period for the system to bootstrap
+
+        while(true) {
+            int timeout = raft->get_election_timeout();
+            std::this_thread::sleep_for(std::chrono::milliseconds(timeout/3));
+            raft->wait_till_follower();
+            
+            if(!raft->current_leader_id) {
+                continue;
+            }
+            
+            try {
+                raft->client_put(raft->current_leader_id, std::to_string(raft->get_id()), std::to_string(value));
+                value++;
+            } catch (TTransportException e) {
+                printf("Caught exception: %s\n", e.what());
+            }
+        }
     }
     
     void* WatRaftServer::start_rpc_server(void* param) {
