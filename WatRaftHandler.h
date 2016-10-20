@@ -8,8 +8,10 @@
 
 namespace WatRaft {
 
-class WatRaftServer; // Forward declaration.
 
+class WatRaftServer; // Forward declaration.
+struct AeRequest;
+    
 class WatRaftHandler : virtual public WatRaftIf {
   public:
     explicit WatRaftHandler(WatRaftServer* raft_server);
@@ -33,7 +35,9 @@ class WatRaftHandler : virtual public WatRaftIf {
   private:
     WatRaftServer* server;
     int leader_id;
+    static void* process_ae(void* param);
 };
-} // namespace WatRaft
+    
+    } // namespace WatRaft
 
 #endif

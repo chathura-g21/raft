@@ -1,6 +1,6 @@
 CXX = g++ -std=c++11
 CPPFLAGS = -g -fpermissive -Wall -I. -I/usr/local/include/thrift -Igen-cpp
-LDFLAGS = -lthrift -lpthread
+LDFLAGS = -lthrift -lpthread -lboost_serialization
 LD = g++
 
 PROGRAMS = server
