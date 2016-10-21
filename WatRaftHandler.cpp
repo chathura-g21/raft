@@ -19,12 +19,12 @@ namespace WatRaft {
             exception.error_code = WatRaftErrorType::NOT_LEADER;
             exception.error_message = "This is not the leader";
             exception.node_id = server->current_leader_id;
+            exception.__isset.node_id = true;
             throw exception;
         } else if(server->get_state_machine_value(key).empty()) {
             WatRaftException exception;
             exception.error_code = WatRaftErrorType::KEY_NOT_FOUND;
             exception.error_message = "The key does not exist";
-            exception.node_id = server->current_leader_id;
             throw exception;
         } else {
             _return = server->get_state_machine_value(key);
@@ -33,8 +33,17 @@ namespace WatRaft {
     
     void WatRaftHandler::put(const std::string& key, const std::string& val) {
         
-        std::cout << "Received put request. key: " << key << "term: " << server->current_term <<"\n";
+        std::cout << "\033[1;31m Received put request. key: " << key << "term: " << server->current_term <<"\n";
         server->processed_request = true;
+        if(server->get_current_state() != WatRaftState::LEADER) {
+            WatRaftException exception;
+            exception.error_code = WatRaftErrorType::NOT_LEADER;
+            exception.error_message = "This is not the leader";
+            exception.node_id = server->current_leader_id;
+            exception.__isset.node_id = true;
+            std::cout << "throwing exception: " << server->current_leader_id << exception;
+            throw exception;
+        }
         
         Entry entry;
         entry.term = server->current_term;
@@ -82,9 +91,11 @@ namespace WatRaft {
                                         const std::vector<Entry> & entries,
                                         const int32_t leader_commit_index) {
         // Your implementation goes here
-        printf("append_entries: term: %d | leaderid: %d\n",term, leader_id);
+        if(server->log_level >= 1)
+        printf("append_entries: term: %d | leaderid: %d\n",term, server->current_leader_id);
         
         server->contacted_leader = true;
+        if(server->log_level >= 1)
         std::cout << "prev_log_index: " << std::to_string(prev_log_index) << "prev_term: " << std::to_string(prev_log_term) << std::endl;
         
         if(term < server->current_term) {
@@ -110,7 +121,7 @@ namespace WatRaft {
                                       const int32_t last_log_index,
                                       const int32_t last_log_term) {
         // Your implementation goes here
-        printf("request_vote: term: %d | candidateid: %d\n",term, candidate_id);
+        printf("\033[1;34m request_vote: term: %d | candidateid: %d \033[0m\n",term, candidate_id);
         
         server->contacted_leader = true;
         
@@ -121,7 +132,7 @@ namespace WatRaft {
             server->voted_for = candidate_id;
             server->current_term = term;
             server->set_as_follower();
-            printf("granted_vote: term: %d | candidateid: %d\n",term, candidate_id);
+            printf("\033[1;34m granted_vote: term: %d | candidateid: %d \033[0m\n",term, candidate_id);
         } else {
             _return.vote_granted = false;
             _return.term = server->current_term;

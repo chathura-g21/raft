@@ -2,5 +2,6 @@
 .DS_Store
 server
 gen-cpp
+gen-py
 .idea
 CMakeLists.txt

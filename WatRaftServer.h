@@ -89,7 +89,7 @@ class WatRaftServer {
     std::string get_state_machine_value(std::string key);
     std::string client_get(int node_id,const std::string& key);
     WatRaftState::State get_current_state();
-    
+    int log_level = 0;
   private:
     friend class boost::serialization::access;
         apache::thrift::server::TThreadedServer* rpc_server;

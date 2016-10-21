@@ -70,10 +70,10 @@ namespace WatRaft {
             throw do_heartbeat;
         }
         
-        int client = pthread_create(&client_thread, NULL, do_client_request, this);
-        if(client != 0) {
-            throw client;
-        }
+//        int client = pthread_create(&client_thread, NULL, do_client_request, this);
+//        if(client != 0) {
+//            throw client;
+//        }
         
         //        while (true) {
         //
@@ -98,8 +98,8 @@ namespace WatRaft {
         client.request_vote(remote_rv_result, current_term, this->node_id, commit_log.size(), get_last_log_term());
         transport->close();
         
-        std::cout << "Received "<< remote_rv_result << "from "<< node.ip
-        << ":" << node.port << std::endl;
+        std::cout << "\033[1;34m Received "<< remote_rv_result << "from "<< node.ip
+        << ":" << node.port << "\033[0m" << std::endl;
         
         return remote_rv_result;
     }
@@ -117,11 +117,13 @@ namespace WatRaft {
         int prev_log_index = next_index[node_id-1];//one based index
         int prev_log_term = (prev_log_index > 0 && !commit_log.empty())?
         commit_log[prev_log_index-1].term: 0;
-        std::cout << "sending_prev_log" << std::to_string(prev_log_index) << std::endl;
+        if(log_level >= 1)
+        //std::cout << "sending_prev_log" << std::to_string(prev_log_index) << std::endl;
         
         client.append_entries(remote_ae_result, current_term, this->node_id, prev_log_index, prev_log_term, entries, current_committed_index);
         transport->close();
         match_index[node_id-1] = current_committed_index;
+        if(log_level >= 1)
         std::cout << "Received "<< remote_ae_result << "from "<< node.ip
         << ":" << node.port << std::endl;
         
@@ -169,13 +171,13 @@ namespace WatRaft {
         wat_state.change_state(WatRaftState::LEADER);
         next_index.assign(get_servers()->size(), commit_log.size());
         match_index.assign(get_servers()->size(), 0);
-        std::cout << "Elected node " << get_id() << "as leader\n";
-        std::cout << "Assigning next index as" << commit_log.size() << std::endl;
+        std::cout << "\033[1;34m Elected node " << get_id() << "as leader \033[0m\n";
+        std::cout << "\033[1;34mAssigning next index for followers as" << commit_log.size() << "\033[0m" << std::endl;
     }
     
     void WatRaftServer::set_as_follower() {
         wat_state.change_state(WatRaftState::FOLLOWER);
-        std::cout << "Set node " << get_id() << "as follower\n";
+        //std::cout << "Set node " << get_id() << "as follower\n";
     }
     
     void WatRaftServer::wait_till_follower() {
@@ -200,7 +202,7 @@ namespace WatRaft {
     
     void WatRaftServer::set_candidate_state() {
         wat_state.change_state(WatRaftState::CANDIDATE);
-        printf("Set candidate state\n");
+        printf("\033[1;34m Set candidate state \033[0m\n");
     }
     
     void WatRaftServer::add_log_entry(Entry entry) {
@@ -222,16 +224,19 @@ namespace WatRaft {
     void WatRaftServer::update_state_machine() {
         
         std::vector<Entry>::iterator it= commit_log.begin()+last_applied_index;
+        
         for(;it < commit_log.begin()+current_committed_index; it++) {
             state_machine[it->key] = it->val;
         }
-        
-        last_applied_index = current_committed_index;
-        std::cout << "Current State Machine {";
+        if(last_applied_index < current_committed_index) {
+            //avoid printing for hearbeats
+        std::cout << "\033[1;31m Current State Machine {";
         for(std::map<std::string,std::string>::iterator i = state_machine.begin(); i != state_machine.end(); ++i) {
             std::cout << i->first << ": " << i->second << ", ";
         }
-        std::cout << "\n";
+        std::cout << "}\033[0m\n";
+        }
+        last_applied_index = current_committed_index;
         serialize_state_machine();
     }
     
@@ -308,7 +313,7 @@ namespace WatRaft {
             raft->wait_till_candidate();
             
             raft->current_term++;
-            printf("iterating election thread as candidate. term: %d\n",raft->current_term);
+            printf("\033[1;34m iterating election thread as candidate. term: %d \033[0m\n",raft->current_term);
             int numberOfVotes = 1;
             ServerMap::const_iterator it = raft->get_servers()->begin();
             for (; it != raft->get_servers()->end(); it++) {
@@ -349,7 +354,8 @@ namespace WatRaft {
         while(true) {
             std::this_thread::sleep_for(std::chrono::milliseconds(raft->std_election_timeout/2));
             raft->wait_till_leader();
-            printf("Iterating hearbeat thread as leader. term %d\n", raft->current_term);
+            if(raft->log_level >= 1)
+            printf("Sending heartbeats. term %d\n", raft->current_term);
             if(raft->processed_request) {
                 raft->processed_request = false;
                 continue;
@@ -372,7 +378,8 @@ namespace WatRaft {
                 rq->raft = raft;
                 rq->node_id = it->first;
                 rq->quorum_index = quorum_index;
-                std::cout << "starting thread for node" << std::to_string(rq->node_id) << std::endl;
+//                if(raft->log_level >= 1)
+                //std::cout << "starting thread for node" << std::to_string(rq->node_id) << std::endl;
                 pthread_t ae_req;
                 int result = pthread_create(&ae_req, NULL,  raft->process_ae, (void *)rq);
                 if(result != 0) {
@@ -393,6 +400,7 @@ namespace WatRaft {
         
         while(true) {
             int timeout = raft->get_election_timeout();
+            if(raft->log_level >= 1)
             printf("restarting election timers %d\n", timeout);
             std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
             raft->wait_till_follower();
@@ -453,7 +461,7 @@ namespace WatRaft {
                 
                 int last_commit = server->next_index[ae_args->node_id-1];
                 server->next_index[ae_args->node_id-1]--;
-                
+                if(server->log_level >= 1)
                 std::cout << "prev_index for node"<< std::to_string(ae_args->node_id) << " : " << std::to_string(last_commit) << std::endl;
                 
                 
@@ -470,8 +478,10 @@ namespace WatRaft {
             } while (!remote_ae_result.success);
             server->quorum_log[ae_args->quorum_index]._a++;
             int test = server->quorum_log[ae_args->quorum_index]._a;
+            if(server->log_level >= 1)
              printf("Votes for index: %d: from %d/ %d.\n", server->commit_log.size(), test, server->get_quorum());
             if(server->quorum_log[ae_args->quorum_index]._a >= server->get_quorum()) {
+                std::cout << "\033[0m";
                 server->quorum_log[ae_args->quorum_index]._a = -1000;
                 server->current_committed_index = server->get_last_log_index();
                 server->update_state_machine();
@@ -523,6 +533,9 @@ int main(int argc, char **argv) {
     config.parse(argv[2]);
     try {
         WatRaftServer server(atoi(argv[1]), &config);
+        if(argc == 4) {
+            server.log_level = atoi(argv[3]);
+        }
         server.wait(); // Wait until server shutdown.
     } catch (int rc) {
         printf("Caught exception %d, exiting\n", rc);
