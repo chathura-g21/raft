@@ -13,11 +13,26 @@ namespace WatRaft {
     WatRaftHandler::~WatRaftHandler() {}
     
     void WatRaftHandler::get(std::string& _return, const std::string& key) {
-        // Your implementation goes here
+        std::cout << "Received get request. key: " << key << std::endl;
+        if(server->get_current_state() != WatRaftState::LEADER) {
+            WatRaftException exception;
+            exception.error_code = WatRaftErrorType::NOT_LEADER;
+            exception.error_message = "This is not the leader";
+            exception.node_id = server->current_leader_id;
+            throw exception;
+        } else if(server->get_state_machine_value(key).empty()) {
+            WatRaftException exception;
+            exception.error_code = WatRaftErrorType::KEY_NOT_FOUND;
+            exception.error_message = "The key does not exist";
+            exception.node_id = server->current_leader_id;
+            throw exception;
+        } else {
+            _return = server->get_state_machine_value(key);
+        }
     }
     
     void WatRaftHandler::put(const std::string& key, const std::string& val) {
-        // Your implementation goes here
+        
         std::cout << "Received put request. key: " << key << "term: " << server->current_term <<"\n";
         server->processed_request = true;
         

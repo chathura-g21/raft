@@ -128,6 +128,15 @@ namespace WatRaft {
         return remote_ae_result;
     }
     
+    std::string WatRaftServer::get_state_machine_value(std::string key) {
+        std::map<std::string, std::string>::iterator it = state_machine.find(key);
+        std::string result;
+        if(it != state_machine.end()) {
+            result = it->second;
+        }
+        return result;
+    }
+    
     void WatRaftServer::client_put(int node_id,const std::string& key,const std::string& value) {
         IPPortPair node = config->get_servers()->at(node_id);
         boost::shared_ptr<TSocket> socket(
@@ -137,6 +146,23 @@ namespace WatRaft {
         WatRaftClient client(protocol);
         transport->open();
         client.put(key, value);
+        transport->close();
+    }
+    
+    std::string WatRaftServer::client_get(int node_id,const std::string& key) {
+        IPPortPair node = config->get_servers()->at(node_id);
+        boost::shared_ptr<TSocket> socket(
+                                          new TSocket(node.ip, node.port));
+        boost::shared_ptr<TTransport> transport(new TBufferedTransport(socket));
+        boost::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
+        WatRaftClient client(protocol);
+        transport->open();
+        
+        std::string return_val;
+        client.get(return_val, key);
+        transport->close();
+        std::cout << return_val;
+        return return_val;
     }
     
     void WatRaftServer::elect_as_leader() {
@@ -262,6 +288,10 @@ namespace WatRaft {
             boost::archive::text_iarchive ia(ifs);
             ia >> (*this);
         }
+    }
+    
+    WatRaftState::State WatRaftServer::get_current_state() {
+        return wat_state.read_state();
     }
     
     template<typename Archive>
@@ -393,14 +423,20 @@ namespace WatRaft {
             std::this_thread::sleep_for(std::chrono::milliseconds(timeout/3));
             raft->wait_till_follower();
             
-            if(!raft->current_leader_id) {
+            if(!raft->current_leader_id) {//if no leader don't do anything
                 continue;
             }
             std::cout << "Sending request as client. leader: " + std::to_string(raft->current_leader_id) + " term: " + std::to_string(raft->current_term);
             try {
                 raft->client_put(raft->current_leader_id, std::to_string(raft->get_id()), std::to_string(value));
                 value++;
+                
+                std::string current_value = raft->client_get(raft->current_leader_id, std::to_string(raft->get_id()));
+                printf("current state_machine get value for %d: %s \n", raft->get_id(), current_value.c_str());
+                
             } catch (TTransportException e) {
+                printf("Caught exception: %s\n", e.what());
+            } catch(WatRaftException e) {
                 printf("Caught exception: %s\n", e.what());
             }
         }

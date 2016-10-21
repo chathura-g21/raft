@@ -86,6 +86,9 @@ class WatRaftServer {
     void serialize_current_state();
     void deserialize_current_state();
     static void* process_ae(void* param);
+    std::string get_state_machine_value(std::string key);
+    std::string client_get(int node_id,const std::string& key);
+    WatRaftState::State get_current_state();
     
   private:
     friend class boost::serialization::access;

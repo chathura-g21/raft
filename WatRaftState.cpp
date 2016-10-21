@@ -34,5 +34,13 @@ void WatRaftState::wait_ge(State state) {
     }
     pthread_mutex_unlock(&wait_on_state);
 }
+    
+    WatRaftState::State WatRaftState::read_state() {
+        State current_state;
+        pthread_mutex_lock(&wait_on_state);
+        current_state  = raft_state;
+        pthread_mutex_unlock(&wait_on_state);
+        return current_state;
+    }
 } // namespace WatRaft
 

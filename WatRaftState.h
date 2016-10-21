@@ -18,7 +18,7 @@ class WatRaftState {
   void wait_e(State state);
   // Wait until state is greater than or equal to the parameter.
   void wait_ge(State state);
-
+  State read_state();
  private:
   State raft_state;
   pthread_cond_t state_change;
