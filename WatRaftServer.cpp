@@ -460,6 +460,10 @@ namespace WatRaft {
                 
                 
                 int last_commit = server->next_index[ae_args->node_id-1];
+                
+                if(last_commit < -2) {
+                    break;
+                }
                 server->next_index[ae_args->node_id-1]--;
                 if(server->log_level >= 1)
                 std::cout << "prev_index for node"<< std::to_string(ae_args->node_id) << " : " << std::to_string(last_commit) << std::endl;

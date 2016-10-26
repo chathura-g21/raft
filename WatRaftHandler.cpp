@@ -33,14 +33,16 @@ namespace WatRaft {
     
     void WatRaftHandler::put(const std::string& key, const std::string& val) {
         
-        std::cout << "\033[1;31m Received put request. key: " << key << "term: " << server->current_term <<"\n";
+        std::cout << "\033[1;31m Received put request. key: " << key << " value: " << val <<" term: " << server->current_term <<"\n";
         server->processed_request = true;
         if(server->get_current_state() != WatRaftState::LEADER) {
             WatRaftException exception;
             exception.error_code = WatRaftErrorType::NOT_LEADER;
             exception.error_message = "This is not the leader";
-            exception.node_id = server->current_leader_id;
-            exception.__isset.node_id = true;
+            if(server->get_current_state() == WatRaftState::FOLLOWER) {                
+                exception.node_id = server->current_leader_id;
+                exception.__isset.node_id = true;
+            }
             std::cout << "throwing exception: " << server->current_leader_id << exception;
             throw exception;
         }
